@@ -161,6 +161,22 @@ public class UpdateDeleteGeneratorTests
         Assert.Empty(gen.GenerateDeleteStatements(TestTable, []));
     }
 
+    // ── 只有主键值时不生成无效的 SET 子句 ──
+
+    [Fact]
+    public void Update_RowWithPrimaryKeyOnly_SkipsStatement()
+    {
+        var rows = new List<IReadOnlyDictionary<string, string?>>
+        {
+            new Dictionary<string, string?> { ["Id"] = "1" }
+        };
+
+        Assert.Empty(new SqlServerSqlGenerator().GenerateUpdateStatements(TestTable, rows));
+        Assert.Empty(new MySqlSqlGenerator().GenerateUpdateStatements(TestTable, rows));
+        Assert.Empty(new PostgresSqlGenerator().GenerateUpdateStatements(TestTable, rows));
+        Assert.Empty(new SqliteSqlGenerator().GenerateUpdateStatements(TestTable, rows));
+    }
+
     // ── 接口方法（带 dbType 参数）──
 
     [Fact]

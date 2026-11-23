@@ -326,7 +326,13 @@ public sealed class PostgresSqlGenerator : ISqlGenerator
         foreach (var row in rows)
         {
             var sets = row.Where(kv => !pkCols.Contains(kv.Key, StringComparer.OrdinalIgnoreCase))
-                .Select(kv => $"{QuoteIdentifier(kv.Key)} = {FormatSqlLiteral(kv.Value)}");
+                .Select(kv => $"{QuoteIdentifier(kv.Key)} = {FormatSqlLiteral(kv.Value)}")
+                .ToList();
+
+            // 只有主键值时无法生成 SET 子句，跳过以免输出无效 SQL
+            if (sets.Count == 0)
+                continue;
+
             var wheres = pkCols.Select(pk => $"{QuoteIdentifier(pk)} = {FormatSqlLiteral(row.GetValueOrDefault(pk))}");
             result.Add($"UPDATE {tableName} SET {string.Join(", ", sets)} WHERE {string.Join(" AND ", wheres)};");
         }

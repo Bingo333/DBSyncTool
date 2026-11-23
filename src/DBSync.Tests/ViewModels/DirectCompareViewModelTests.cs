@@ -106,6 +106,7 @@ public sealed class DirectCompareViewModelTests
             new FakeSchemaReader(sourceTables, targetTables),
             new FakeSqlGenerator(),
             new FakeFingerprinter(),
+            new FakeFullRowReader(),
             new NullWindowProvider());
     }
 
@@ -224,6 +225,15 @@ public sealed class DirectCompareViewModelTests
     private sealed class FakeFingerprinter : IDataFingerprinter
     {
         public async IAsyncEnumerable<RowHash> ReadRowHashesAsync(DatabaseConnection connection, TableModel table, string? whereClause = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield break;
+        }
+    }
+
+    private sealed class FakeFullRowReader : IFullRowReader
+    {
+        public async IAsyncEnumerable<IReadOnlyDictionary<string, string?>> ReadRowsAsync(DatabaseConnection connection, TableModel table, string? whereClause = null, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await Task.CompletedTask;
             yield break;

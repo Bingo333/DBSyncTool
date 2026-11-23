@@ -49,6 +49,11 @@ public partial class DirectCompareViewModel : ObservableObject, IPageViewModel
     private readonly IDataFingerprinter _fingerprinter;
 
     /// <summary>
+    /// 完整行数据读取器，用于在需要生成 INSERT/UPDATE 时从源库读取各列取值
+    ///</summary>
+    private readonly IFullRowReader _fullRowReader;
+
+    /// <summary>
     /// 窗口提供者
     ///</summary>
     private readonly IWindowProvider _windowProvider;
@@ -67,6 +72,12 @@ public partial class DirectCompareViewModel : ObservableObject, IPageViewModel
     /// 缓存的源库表结构，键为比对使用的表名（TableKey）
     ///</summary>
     private Dictionary<string, TableModel> _sourceTableMap = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 缓存的源库完整行数据，键为比对使用的表名（TableKey），
+    /// 用于给新增/变更行生成带字段赋值的 DML
+    ///</summary>
+    private readonly Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string?>>> _sourceFullData = new(StringComparer.Ordinal);
 
     /// <summary>
     /// 应用设置
@@ -303,6 +314,7 @@ public partial class DirectCompareViewModel : ObservableObject, IPageViewModel
         ISchemaReader schemaReader,
         ISqlGenerator sqlGenerator,
         IDataFingerprinter fingerprinter,
+        IFullRowReader fullRowReader,
         IWindowProvider windowProvider)
     {
         _connectionStore = connectionStore;
@@ -310,6 +322,7 @@ public partial class DirectCompareViewModel : ObservableObject, IPageViewModel
         _schemaReader = schemaReader;
         _sqlGenerator = sqlGenerator;
         _fingerprinter = fingerprinter;
+        _fullRowReader = fullRowReader;
         _windowProvider = windowProvider;
         _settings = _appSettingsStore.Load();
     }
@@ -639,6 +652,11 @@ public partial class DirectCompareViewModel : ObservableObject, IPageViewModel
                     targetRows.Add(row);
 
                 _dataDiffs[tableName] = DataComparer.Compare(targetRows, sourceRows, false);
+
+                // 只靠行指纹无法生成带字段赋值的 DML，需要补读源库完整行数据
+                var diff = _dataDiffs[tableName];
+                if (!diff.Skipped && (diff.RowsToInsert.Count > 0 || diff.ChangedRows.Count > 0))
+                    await LoadSourceFullDataAsync(sourceConn, tableName, sourceTable);
             }
 
             BuildSchemaPreview(_schemaDiff);
@@ -959,8 +977,8 @@ public partial class DirectCompareViewModel : ObservableObject, IPageViewModel
 
         if (node.GenerateInsert && dataDiff.RowsToInsert.Count > 0)
         {
-            var rows = dataDiff.RowsToInsert.Select(r => r.PrimaryKeyValues).ToList();
-            sb.AppendLine($"-- {tableName} 数据新增 {dataDiff.RowsToInsert.Count} 行");
+            var rows = SqlGeneratorRows.ResolveRowsToInsert(sourceTable, dataDiff, _sourceFullData, tableName);
+            sb.AppendLine($"-- {tableName} 数据新增 {rows.Count} 行");
             foreach (var sql in _sqlGenerator.GenerateInsertStatements(dbType, table, rows, ExcludeIdentityColumns))
             {
                 sb.AppendLine(sql);
@@ -981,13 +999,45 @@ public partial class DirectCompareViewModel : ObservableObject, IPageViewModel
 
         if (node.GenerateUpdate && dataDiff.ChangedRows.Count > 0)
         {
-            var changedRowData = dataDiff.ChangedRows.Select(r => r.PrimaryKeyValues).ToList();
-            sb.AppendLine($"-- {tableName} 数据变更 {dataDiff.ChangedRows.Count} 行");
-            foreach (var sql in _sqlGenerator.GenerateUpdateStatements(dbType, table, changedRowData))
+            var (updateRows, missingCount) = SqlGeneratorRows.ResolveRowsForUpdate(sourceTable, dataDiff, _sourceFullData, tableName);
+            if (updateRows.Count > 0)
             {
-                sb.AppendLine(sql);
-                sb.AppendLine();
+                sb.AppendLine($"-- {tableName} 数据变更 {updateRows.Count} 行");
+                foreach (var sql in _sqlGenerator.GenerateUpdateStatements(dbType, table, updateRows))
+                {
+                    sb.AppendLine(sql);
+                    sb.AppendLine();
+                }
             }
+
+            if (missingCount > 0)
+                sb.AppendLine($"-- 警告：{tableName} 有 {missingCount} 行变更缺少完整行数据，未生成 UPDATE 语句");
+        }
+    }
+
+    /// <summary>
+    /// 读取源库指定表的完整行数据并缓存，供生成 INSERT/UPDATE 语句还原字段值。
+    /// 读取失败时只记录日志，不影响比对结果。
+    ///</summary>
+    /// <param name="connection">源库连接</param>
+    /// <param name="tableName">比对使用的表名（TableKey）</param>
+    /// <param name="table">源库表结构</param>
+    private async Task LoadSourceFullDataAsync(DatabaseConnection connection, string tableName, TableModel table)
+    {
+        try
+        {
+            CompareProgressText = $"正在读取 {tableName} 完整行数据";
+
+            var rows = new List<IReadOnlyDictionary<string, string?>>();
+            await foreach (var row in _fullRowReader.ReadRowsAsync(connection, table, cancellationToken: CancellationToken.None))
+                rows.Add(row);
+
+            _sourceFullData[tableName] = rows;
+        }
+        catch (Exception ex)
+        {
+            _sourceFullData.Remove(tableName);
+            Log.Warning(ex, "读取 {Table} 完整行数据失败，将无法生成带字段赋值的 DML", tableName);
         }
     }
 
@@ -1004,6 +1054,7 @@ public partial class DirectCompareViewModel : ObservableObject, IPageViewModel
         _schemaDiff = null;
         _dataDiffs.Clear();
         _sourceTableMap.Clear();
+        _sourceFullData.Clear();
         SelectedDiffItem = null;
         SelectedDiffSqlText = "";
     }

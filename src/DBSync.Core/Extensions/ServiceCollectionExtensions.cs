@@ -30,6 +30,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<PostgresDataFingerprinter>();
         services.AddSingleton<SqliteDataFingerprinter>();
         services.AddSingleton<IDataFingerprinter, DatabaseDataFingerprinter>();
+        services.AddSingleton<IFullRowReader, DatabaseFullRowReader>();
 
         services.AddSingleton<SqlServerSqlGenerator>();
         services.AddSingleton<MySqlSqlGenerator>();

@@ -774,13 +774,8 @@ public partial class CompareViewModel : ObservableObject, IPageViewModel
 
             if (node.GenerateUpdate && dataDiff.ChangedRows.Count > 0)
             {
-                var changedRowData = dataDiff.ChangedRows.Select(r => r.PrimaryKeyValues).ToList();
-                sb.AppendLine($"-- {tableName} 数据变更 {dataDiff.ChangedRows.Count} 行");
-                foreach (var sql in _sqlGenerator.GenerateUpdateStatements(dbType, table, changedRowData))
-                {
-                    sb.AppendLine(sql);
-                    sb.AppendLine();
-                }
+                sb.AppendLine(BuildUpdateSqlBlock(dbType, tableName, table, dataDiff));
+                sb.AppendLine();
             }
         }
 
@@ -907,9 +902,7 @@ public partial class CompareViewModel : ObservableObject, IPageViewModel
 
                 if (value.GenerateUpdate && dataDiff.ChangedRows.Count > 0 && table is not null)
                 {
-                    var changedRowData = dataDiff.ChangedRows.Select(r => r.PrimaryKeyValues).ToList();
-                    sb.AppendLine($"-- {tableName} 数据变更 {dataDiff.ChangedRows.Count} 行");
-                    sb.AppendLine(string.Join(Environment.NewLine, _sqlGenerator.GenerateUpdateStatements(dbType, table, changedRowData)));
+                    sb.AppendLine(BuildUpdateSqlBlock(dbType, tableName, table, dataDiff));
                 }
             }
 
@@ -1555,10 +1548,7 @@ public partial class CompareViewModel : ObservableObject, IPageViewModel
 
                     if (node.GenerateUpdate && dataDiff.ChangedRows.Count > 0 && table is not null)
                     {
-                        var changedRowData = dataDiff.ChangedRows.Select(r => r.PrimaryKeyValues).ToList();
-                        var updateSql = _sqlGenerator.GenerateUpdateStatements(dbType, table, changedRowData);
-                        sb.AppendLine($"-- {tableName} 数据变更 {dataDiff.ChangedRows.Count} 行");
-                        sb.AppendLine(string.Join(Environment.NewLine, updateSql));
+                        sb.AppendLine(BuildUpdateSqlBlock(dbType, tableName, table, dataDiff));
                         sb.AppendLine();
                     }
                 }
@@ -1598,6 +1588,35 @@ public partial class CompareViewModel : ObservableObject, IPageViewModel
         var dbType = SelectedCompareConnection?.ToDatabaseConnection()?.DbType ?? _loadedSnapshot.Manifest.DbType;
         var rows = SqlGeneratorRows.ResolveRowsToInsert(table, diff, _loadedSnapshot.FullData);
         return string.Join(Environment.NewLine, _sqlGenerator.GenerateInsertStatements(dbType, table, rows, ExcludeIdentityColumns));
+    }
+
+    /// <summary>
+    /// 生成数据变更（UPDATE）语句块。
+    /// 差异结果中只保存主键值和哈希，必须借助快照的完整行数据还原各列取值，
+    /// 否则 UPDATE 只有主键、没有 SET 赋值。
+    ///</summary>
+    /// <param name="dbType">数据库类型</param>
+    /// <param name="tableName">表全名</param>
+    /// <param name="table">表结构定义</param>
+    /// <param name="dataDiff">数据差异</param>
+    /// <returns>UPDATE 语句块文本（含注释）</returns>
+    private string BuildUpdateSqlBlock(DatabaseType dbType, string tableName, TableModel table, DataDiff dataDiff)
+    {
+        var (rows, missingCount) = SqlGeneratorRows.ResolveRowsForUpdate(table, dataDiff, _loadedSnapshot?.FullData);
+        var lines = new List<string>();
+
+        if (rows.Count > 0)
+        {
+            lines.Add($"-- {tableName} 数据变更 {rows.Count} 行");
+            lines.AddRange(_sqlGenerator.GenerateUpdateStatements(dbType, table, rows));
+        }
+
+        if (missingCount > 0)
+        {
+            lines.Add($"-- 警告：{tableName} 有 {missingCount} 行变更缺少完整行数据，未生成 UPDATE 语句（请以“结构+数据”重新导出快照后比对）");
+        }
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     /// <summary>
