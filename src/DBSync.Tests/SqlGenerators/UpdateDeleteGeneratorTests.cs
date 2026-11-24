@@ -86,6 +86,36 @@ public class UpdateDeleteGeneratorTests
         Assert.Contains("DELETE FROM", sql[0]);
     }
 
+    [Fact]
+    public void MySql_GenerateUpdate_EscapesBackslashInLiteral()
+    {
+        // MySQL 默认以反斜杠作为转义符：值末尾的反斜杠若不双写，会吃掉结束引号，
+        // 使得字面量被延后截断，等同于把数据内容当 SQL 执行
+        var gen = new MySqlSqlGenerator();
+        var rows = new List<IReadOnlyDictionary<string, string?>>
+        {
+            new Dictionary<string, string?> { ["Id"] = "1", ["Name"] = @"C:\temp\", ["Age"] = "1" }
+        };
+
+        var sql = gen.GenerateUpdateStatements(TestTable, rows);
+
+        Assert.Contains(@"'C:\\temp\\'", sql[0]);
+    }
+
+    [Fact]
+    public void MySql_GenerateDelete_EscapesBackslashInPrimaryKey()
+    {
+        var gen = new MySqlSqlGenerator();
+        var rows = new List<IReadOnlyDictionary<string, string?>>
+        {
+            new Dictionary<string, string?> { ["Id"] = @"a'b\" }
+        };
+
+        var sql = gen.GenerateDeleteStatements(TestTable, rows);
+
+        Assert.Contains(@"'a''b\\'", sql[0]);
+    }
+
     // ── PostgreSQL ──
 
     [Fact]

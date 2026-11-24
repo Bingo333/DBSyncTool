@@ -11,8 +11,9 @@ public interface IScriptExecutor
     /// Dry Run：解析脚本，返回操作摘要但不执行
     ///</summary>
     /// <param name="script">SQL 脚本文本</param>
+    /// <param name="dbType">目标数据库类型，用于确定字符串与注释的切分规则</param>
     /// <returns>操作摘要</returns>
-    ScriptExecutionPlan DryRun(string script);
+    ScriptExecutionPlan DryRun(string script, DatabaseType dbType = DatabaseType.SqlServer);
 
     /// <summary>
     /// 执行脚本到目标数据库

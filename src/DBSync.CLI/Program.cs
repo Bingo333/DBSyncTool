@@ -279,10 +279,11 @@ public static class Program
 
         var executor = sp.GetRequiredService<IScriptExecutor>();
         var script = await File.ReadAllTextAsync(scriptPath);
+        var conn = BuildConnection(connStr, dbTypeStr);
 
         if (dryRun)
         {
-            var plan = executor.DryRun(script);
+            var plan = executor.DryRun(script, conn.DbType);
             Console.WriteLine($"Dry Run 结果：");
             Console.WriteLine($"  总语句数：{plan.TotalStatements}");
             Console.WriteLine($"  DDL：{plan.DdlCount} 条");
@@ -293,7 +294,6 @@ public static class Program
             return 0;
         }
 
-        var conn = BuildConnection(connStr, dbTypeStr);
         var progress = new Progress<ScriptExecutionProgress>(p =>
             Console.Write($"\r执行中 {p.Current}/{p.Total}：{p.CurrentStatement}    "));
 

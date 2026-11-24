@@ -112,8 +112,11 @@ public sealed class SnapshotLoader : ISnapshotLoader
     private static async Task<TableModel> ReadTableEntryAsync(ZipArchiveEntry entry, CancellationToken cancellationToken)
     {
         await using var stream = entry.Open();
-        return await JsonSerializer.DeserializeAsync(stream, JsonContext.TableModel, cancellationToken)
-               ?? throw new InvalidOperationException($"快照条目 {entry.FullName} 内容为空。");
+        var table = await JsonSerializer.DeserializeAsync(stream, JsonContext.TableModel, cancellationToken)
+                    ?? throw new InvalidOperationException($"快照条目 {entry.FullName} 内容为空。");
+
+        // 快照来自外部文件，表结构元数据会参与拼装升级脚本，需先做安全校验
+        return SnapshotContentValidator.Validate(table);
     }
 
     /// <summary>

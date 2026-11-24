@@ -275,10 +275,10 @@ public sealed class MySqlSqlGenerator : ISqlGenerator
     {
         return value is null
             ? "NULL"
-            : $"'{value.Replace("'", "''")}'";
+            : $"'{DbDialectSupport.EscapeMySqlSqlLiteral(value)}'";
     }
 
-    private static string EscapeSqlLiteral(string value) => value.Replace("'", "''");
+    private static string EscapeSqlLiteral(string value) => DbDialectSupport.EscapeMySqlSqlLiteral(value);
 
     /// <summary>
     /// 生成 UPDATE 语句组

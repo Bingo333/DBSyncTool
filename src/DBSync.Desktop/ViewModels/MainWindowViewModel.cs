@@ -288,9 +288,17 @@ public sealed partial class MainWindowViewModel : ObservableObject
     /// <param name="url">要打开的网址</param>
     private static void OpenBrowser(string url)
     {
+        // 地址来自远端接口响应，只允许 http/https，避免 file://、UNC 路径等
+        // 被 UseShellExecute 交给系统直接执行或访问本地资源
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            return;
+        }
+
         try
         {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
         }
         catch
         {

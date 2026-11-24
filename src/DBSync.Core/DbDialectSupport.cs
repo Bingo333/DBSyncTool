@@ -80,6 +80,17 @@ internal static class DbDialectSupport
 
     internal static string EscapeSqlLiteral(string value) => value.Replace("'", "''");
 
+    /// <summary>
+    /// 转义 MySQL 字符串字面量。
+    /// </summary>
+    /// <remarks>
+    /// MySQL 默认把反斜杠当作转义符，若只把单引号双写，值末尾的反斜杠会「吃掉」
+    /// 结束引号，导致字面量被提前/延后截断，语义上等同于把数据内容当 SQL 执行。
+    /// 因此必须先把反斜杠自身双写，再处理单引号。
+    /// </remarks>
+    internal static string EscapeMySqlSqlLiteral(string value)
+        => value.Replace("\\", "\\\\").Replace("'", "''");
+
     internal static string EscapeCsv(string value)
     {
         return value.Contains('"') || value.Contains(',') || value.Contains('\r') || value.Contains('\n')

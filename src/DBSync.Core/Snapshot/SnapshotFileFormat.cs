@@ -16,6 +16,15 @@ internal static class SnapshotFileFormat
     private const int Iterations = 100_000;
 
     /// <summary>
+    /// 明文密码提示的最大长度（字节）。
+    /// </summary>
+    /// <remarks>
+    /// 文件头长度字段来自不可信文件，若直接按该整数分配缓冲区，
+    /// 一个几十字节的畸形文件即可触发数 GB 的内存分配（拒绝服务）。
+    /// </remarks>
+    private const int MaxPasswordHintLength = 4096;
+
+    /// <summary>
     /// 写入明文文件头。
     /// </summary>
     /// <param name="stream">输出流</param>
@@ -53,7 +62,7 @@ internal static class SnapshotFileFormat
         var iv = await ReadExactlyAsync(stream, IvLength);
         var lengthBytes = await ReadExactlyAsync(stream, 4);
         var hintLength = BinaryPrimitives.ReadInt32LittleEndian(lengthBytes);
-        if (hintLength < 0)
+        if (hintLength < 0 || hintLength > MaxPasswordHintLength)
             throw new InvalidOperationException("不是有效的 .dbsync 文件。");
 
         var hintBytes = await ReadExactlyAsync(stream, hintLength);

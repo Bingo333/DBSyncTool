@@ -93,6 +93,50 @@ public class ScriptExecutorTests
     }
 
     [Fact]
+    public void DryRun_SemicolonInsideStringLiteral_IsNotSplit()
+    {
+        // 数据值里带分号时，不能被切成两条独立语句，否则等于执行数据内容里的 SQL
+        var script = "INSERT INTO [dbo].[Users] ([Name]) VALUES (N'x'') ; DROP TABLE Users; --');";
+
+        var plan = _executor.DryRun(script);
+
+        Assert.Equal(1, plan.TotalStatements);
+        Assert.Equal(0, plan.DdlCount);
+        Assert.Equal(1, plan.DmlCount);
+    }
+
+    [Fact]
+    public void DryRun_GoBatchSeparator_IsNotCountedAsStatement()
+    {
+        var script = """
+            CREATE TABLE Users (Id INT);
+            GO
+            INSERT INTO Users (Id) VALUES (1);
+            GO
+            """;
+
+        var plan = _executor.DryRun(script);
+
+        Assert.Equal(2, plan.TotalStatements);
+        Assert.Equal(1, plan.DdlCount);
+        Assert.Equal(1, plan.DmlCount);
+    }
+
+    [Fact]
+    public void DryRun_SemicolonInsideLineComment_IsIgnored()
+    {
+        var script = """
+            -- 说明：这里有一个分号 ; 但不该切分
+            INSERT INTO Users (Id) VALUES (1);
+            """;
+
+        var plan = _executor.DryRun(script);
+
+        Assert.Equal(1, plan.TotalStatements);
+        Assert.Equal(1, plan.DmlCount);
+    }
+
+    [Fact]
     public void DryRun_LongStatement_TruncatedInDdlList()
     {
         var longDdl = "CREATE TABLE VeryLongTableName (" + string.Join(", ", Enumerable.Range(1, 50).Select(i => $"Col{i} INT")) + ")";
